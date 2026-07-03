@@ -1,0 +1,20 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "name": "assfonts-build",
+    "version": "0.7.3",
+    "dependencies": [
+        {
+            "name": "harfbuzz",
+            "features": [
+                "experimental-api"
+            ]
+        },
+        "freetype",
+        "nlohmann-json",
+        "libiconv",
+        "fmt",
+        "ghc-filesystem",
+        "pcre2",
+        "string-view-lite"
+    ]
+}
