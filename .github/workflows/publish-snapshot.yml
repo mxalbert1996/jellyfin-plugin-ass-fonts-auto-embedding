@@ -1,0 +1,121 @@
+name: "Publish Snapshot"
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-snapshot
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Compute snapshot version
+        id: ver
+        run: |
+          set -euo pipefail
+
+          base=""
+          while IFS= read -r line; do
+            case "$line" in
+              version:*)
+                base="${line#version:}"
+                base="${base#${base%%[![:space:]]*}}"
+                base="${base%${base##*[![:space:]]}}"
+                base="${base#\"}"
+                base="${base%\"}"
+                break
+                ;;
+            esac
+          done < build.yaml
+
+          case "$base" in
+            ""|*[!0-9]*)
+              echo "build.yaml version must be digits only, got: ${base:-<empty>}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "${GITHUB_RUN_NUMBER:?}" -gt 65535 ]; then
+            echo "GITHUB_RUN_NUMBER exceeds maximum supported assembly version component: $GITHUB_RUN_NUMBER" >&2
+            exit 1
+          fi
+
+          echo "version=${base}.$(date -u +%y%m).${GITHUB_RUN_NUMBER}.0" >> "$GITHUB_OUTPUT"
+
+      - name: Build native assfonts libraries
+        run: ./assfonts-build/build.sh
+
+      - name: Build plugin
+        id: jprm
+        uses: oddstr13/jellyfin-plugin-repository-manager@v1.1.1
+        with:
+          dotnet-target: net9.0
+          version: ${{ steps.ver.outputs.version }}
+
+      - name: Generate checksums and upload to rolling snapshot pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ARTIFACT: ${{ steps.jprm.outputs.artifact }}
+        run: |
+          dir="$(dirname "$ARTIFACT")"
+          name="$(basename "$ARTIFACT")"
+          cd "$dir"
+          md5sum "$name" > "$name.md5"
+          sha256sum "$name" > "$name.sha256"
+          gh release view snapshot >/dev/null 2>&1 || \
+            gh release create snapshot --prerelease --target main \
+              --title "Snapshot builds" \
+              --notes "Rolling snapshot builds from main. Not for production use."
+          gh release upload snapshot "$name" "$name.md5" "$name.sha256" --clobber
+
+      - name: Prepare snapshot manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          rm -rf manifest-snapshot
+          .github/scripts/prepare-manifest-branch.sh manifest-snapshot manifest-snapshot
+
+      - name: Install jprm
+        run: pipx install jprm
+
+      - name: Update snapshot manifest
+        env:
+          ARTIFACT: ${{ steps.jprm.outputs.artifact }}
+        run: |
+          base="https://github.com/${{ github.repository }}/releases/download/snapshot"
+          jprm --verbosity=debug repo add \
+            --url="$base" \
+            --plugin-url="$base/$(basename "$ARTIFACT")" \
+            manifest-snapshot/manifest.json \
+            "$ARTIFACT"
+
+      - name: Commit manifest
+        run: |
+          cd manifest-snapshot
+          git add manifest.json
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit"
+            exit 0
+          fi
+          git commit -m "chore: publish ${{ steps.ver.outputs.version }} to snapshot manifest"
+          git push origin manifest-snapshot

@@ -1,0 +1,24 @@
+name: "ASS Fonts Auto Embedding"
+guid: "2d9e9cb9-c43e-4f6f-8133-4fcf2d178001"
+version: 1
+targetAbi: "10.11.0.0"
+framework: "net9.0"
+owner: "Albert Chang"
+overview: "Auto embed fonts into ASS/SSA subtitles"
+description: |
+  Rewrites eligible ASS/SSA subtitles so Jellyfin can deliver font-embedded subtitle output using assfonts.
+category: "Subtitles"
+changelog: ""
+artifacts:
+  - "BitFaster.Caching.dll"
+  - "Diacritics.dll"
+  - "ICU4N.Transliterator.dll"
+  - "ICU4N.dll"
+  - "J2N.dll"
+  - "Jellyfin.Plugin.AssFontsAutoEmbedding.deps.json"
+  - "Jellyfin.Plugin.AssFontsAutoEmbedding.dll"
+  - "NEbml.Core.dll"
+  - "Polly.Core.dll"
+  - "Polly.dll"
+  - "native/linux-arm64/libassfonts.so"
+  - "native/linux-x64/libassfonts.so"

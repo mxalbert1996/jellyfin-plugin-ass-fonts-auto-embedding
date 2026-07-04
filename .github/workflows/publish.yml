@@ -1,0 +1,115 @@
+name: "Publish Release"
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Resolve release tag and version
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            tag="${{ github.event.release.tag_name }}"
+          else
+            tag="${{ github.event.inputs.tag }}"
+          fi
+
+          if [ -z "$tag" ]; then
+            echo "Release tag is required" >&2
+            exit 1
+          fi
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure GitHub release exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: gh release view "$TAG" >/dev/null
+
+      - name: Stamp build.yaml for this release
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path("build.yaml")
+          version = os.environ["VERSION"]
+          lines = path.read_text(encoding="utf-8").splitlines()
+          for index, line in enumerate(lines):
+              if line.startswith("version:"):
+                  lines[index] = f'version: "{version}"'
+                  break
+          else:
+              raise SystemExit("build.yaml is missing a version field")
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+
+      - name: Build native assfonts libraries
+        run: ./assfonts-build/build.sh
+
+      - name: Build plugin
+        id: jprm
+        uses: oddstr13/jellyfin-plugin-repository-manager@v1.1.1
+        with:
+          dotnet-target: net9.0
+          version: ${{ steps.ver.outputs.version }}
+
+      - name: Generate checksums and upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          ARTIFACT: ${{ steps.jprm.outputs.artifact }}
+        run: |
+          dir="$(dirname "$ARTIFACT")"
+          name="$(basename "$ARTIFACT")"
+          cd "$dir"
+          md5sum "$name" > "$name.md5"
+          sha256sum "$name" > "$name.sha256"
+          gh release upload "$TAG" "$name" "$name.md5" "$name.sha256" "$GITHUB_WORKSPACE/build.yaml" --clobber
+
+      - name: Prepare release manifest branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          rm -rf manifest-release
+          .github/scripts/prepare-manifest-branch.sh manifest-release manifest-release
+
+      - name: Publish release manifest
+        uses: Kevinjil/jellyfin-plugin-repo-action@v0.4.3
+        with:
+          ignorePrereleases: true
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          pagesBranch: manifest-release
+          pagesFile: manifest.json
