@@ -111,3 +111,5 @@ publish/
 
 # Local build automation output
 /build/
+
+/test/

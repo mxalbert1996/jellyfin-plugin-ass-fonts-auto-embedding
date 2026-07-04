@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Jellyfin.Plugin.AssFontsAutoEmbedding</AssemblyName>
+    <RootNamespace>Jellyfin.Plugin.AssFontsAutoEmbedding</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <OutputType Condition="'$(NativeSmokeValidation)' == 'true' or '$(ManagedCoordinationValidation)' == 'true'">Exe</OutputType>
+    <StartupObject Condition="'$(NativeSmokeValidation)' == 'true' or '$(ManagedCoordinationValidation)' == 'true'">Jellyfin.Plugin.AssFontsAutoEmbedding.Validation.ValidationProgram</StartupObject>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(NativeSmokeValidation)' == 'true'">
+    <OutputPath>bin/Debug/native-smoke-validation/</OutputPath>
+    <IntermediateOutputPath>obj/Debug/native-smoke-validation/</IntermediateOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(ManagedCoordinationValidation)' == 'true'">
+    <OutputPath>bin/Debug/managed-coordination-validation/</OutputPath>
+    <IntermediateOutputPath>obj/Debug/managed-coordination-validation/</IntermediateOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Common" Version="10.11.11" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.11" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web\configPage.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\build\assfonts-x86_64\install\lib\libassfonts.so"
+          Link="native\linux-x64\libassfonts.so"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\build\assfonts-arm64\install\lib\libassfonts.so"
+          Link="native\linux-arm64\libassfonts.so"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="RemoveHostProvidedAssemblies" AfterTargets="Build" Condition="'$(NativeSmokeValidation)' != 'true' and '$(ManagedCoordinationValidation)' != 'true'">
+    <ItemGroup>
+      <HostProvidedAssemblies Include="$(OutputPath)MediaBrowser.*.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Jellyfin.Data.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Jellyfin.Database.Implementations.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Jellyfin.Extensions.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Jellyfin.MediaEncoding.Keyframes.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Emby.Naming.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Microsoft.Extensions.*.dll" />
+      <HostProvidedAssemblies Include="$(OutputPath)Microsoft.EntityFrameworkCore*.dll" />
+    </ItemGroup>
+
+    <Delete Files="@(HostProvidedAssemblies)" TreatErrorsAsWarnings="true" />
+  </Target>
+</Project>

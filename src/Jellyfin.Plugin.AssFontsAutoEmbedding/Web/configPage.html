@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>ASS Fonts Auto Embedding</title>
+</head>
+<body>
+    <div id="AssFontsAutoEmbeddingConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox,emby-textarea">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="AssFontsAutoEmbeddingConfigForm">
+                    <div class="verticalSection verticalSection-extrabottompadding">
+                        <h1>ASS Fonts Auto Embedding</h1>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="Enabled" />
+                            <span>Plugin enabled</span>
+                        </label>
+                        <div class="fieldDescription">Turns the plugin on or off.</div>
+                    </div>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="RewriteEnabled" />
+                            <span>Rewrite enabled</span>
+                        </label>
+                        <div class="fieldDescription">Embeds fonts into eligible ASS/SSA subtitles before Jellyfin sends them to clients.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="FontDirectories">Font directories</label>
+                        <textarea id="FontDirectories" name="FontDirectories" class="emby-input emby-textarea" rows="6" style="resize: vertical; min-height: 8em;"></textarea>
+                        <div class="fieldDescription">One directory per line. Add folders that contain fonts used by your subtitles.</div>
+                    </div>
+
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="NativeLogVerbosity">Advanced log verbosity</label>
+                        <select is="emby-select" id="NativeLogVerbosity">
+                            <option value="0">Info (most verbose)</option>
+                            <option value="1">Warn</option>
+                            <option value="2">Error</option>
+                            <option value="3">Text</option>
+                            <option value="4">None</option>
+                        </select>
+                    </div>
+
+                    <div class="verticalSection verticalSection-extrabottompadding">
+                        <h2>Manual font DB rebuild</h2>
+                        <div class="secondaryText">
+                            If you add or remove fonts from your configured folders, run this Jellyfin scheduled task:<br/>
+                            <strong>Dashboard &gt; Scheduled Tasks &gt; Rebuild font DB</strong>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            (function () {
+                const pluginId = '2d9e9cb9-c43e-4f6f-8133-4fcf2d178001';
+                const page = document.querySelector('#AssFontsAutoEmbeddingConfigPage');
+                const form = page.querySelector('#AssFontsAutoEmbeddingConfigForm');
+
+                function normalizeNativeLogVerbosity(value) {
+                    if (typeof value === 'number' && !Number.isNaN(value)) {
+                        return String(value);
+                    }
+
+                    switch (String(value || '').toLowerCase()) {
+                        case 'info':
+                            return '0';
+                        case 'warn':
+                            return '1';
+                        case 'error':
+                            return '2';
+                        case 'text':
+                            return '3';
+                        case 'none':
+                            return '4';
+                        default:
+                            return '1';
+                    }
+                }
+
+                async function loadConfig() {
+                    const config = await ApiClient.getPluginConfiguration(pluginId);
+                    page.querySelector('#Enabled').checked = config.Enabled;
+                    page.querySelector('#RewriteEnabled').checked = config.RewriteEnabled;
+                    page.querySelector('#FontDirectories').value = (config.FontDirectories || []).join('\n');
+                    page.querySelector('#NativeLogVerbosity').value = normalizeNativeLogVerbosity(config.NativeLogVerbosity);
+                }
+
+                form.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+
+                    const config = await ApiClient.getPluginConfiguration(pluginId);
+                    config.Enabled = page.querySelector('#Enabled').checked;
+                    config.RewriteEnabled = page.querySelector('#RewriteEnabled').checked;
+                    config.FontDirectories = page.querySelector('#FontDirectories').value
+                        .split(/\r?\n/)
+                        .map(line => line.trim())
+                        .filter(Boolean);
+                    config.NativeLogVerbosity = parseInt(page.querySelector('#NativeLogVerbosity').value, 10);
+
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+
+                page.addEventListener('pageshow', function () {
+                    loadConfig();
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>
