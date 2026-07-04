@@ -4,14 +4,25 @@ Jellyfin ASS Fonts Auto Embedding is a Jellyfin plugin that rewrites eligible AS
 
 Today, the native runtime path used by the plugin is aimed at Jellyfin on Linux. The plugin can resolve native libraries from Linux, macOS, and Windows-style plugin-local paths, but this repository currently ships Linux native binaries only.
 
+## Installation
+
+In Jellyfin:
+
+1. Open **Dashboard** → **Plugins** → **Repositories**.
+2. Add the manifest URL under plugin repositories.
+   ```
+   https://raw.githubusercontent.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/manifest-release/manifest.json
+   ```
+3. Save, go back to **Plugins**, and install **ASS Fonts Auto Embedding**.
+4. Restart Jellyfin.
+
 ## Usage
 
-1. Install the plugin into Jellyfin.
-2. Open the plugin settings.
-3. Configure one or more readable font directories that contain the fonts your ASS/SSA subtitles need.
-4. Save the settings to persist the configuration and trigger a font DB rebuild.
-5. Play media with eligible ASS/SSA subtitles.
-6. Jellyfin will return rewritten subtitles with embedded subsetted fonts when rewrite succeeds, and fall back to the original subtitle output if it does not.
+1. Open the plugin settings.
+2. Configure one or more readable font directories that contain the fonts your ASS/SSA subtitles need.
+3. Save the settings to persist the configuration and trigger a font DB rebuild.
+4. Play media with eligible ASS/SSA subtitles.
+5. Jellyfin will return rewritten subtitles with embedded subsetted fonts when rewrite succeeds, and fall back to the original subtitle output if it does not.
 
 If files inside an already-configured font directory change, the plugin does not automatically rebuild the font DB. Run the **Rebuild font DB** scheduled task or resave the plugin config when you need those font changes picked up.
 
