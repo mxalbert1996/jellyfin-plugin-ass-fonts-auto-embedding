@@ -1,1 +1,20 @@
-[]
+[
+    {
+        "guid": "2d9e9cb9-c43e-4f6f-8133-4fcf2d178001",
+        "name": "ASS Fonts Auto Embedding",
+        "description": "Rewrites eligible ASS/SSA subtitles so Jellyfin can deliver font-embedded subtitle output using assfonts.\n",
+        "overview": "Auto embed fonts into ASS/SSA subtitles",
+        "owner": "Albert Chang",
+        "category": "Subtitles",
+        "versions": [
+            {
+                "version": "1.2607.1.0",
+                "changelog": "",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/releases/download/snapshot/ass-fonts-auto-embedding_1.2607.1.0.zip",
+                "checksum": "7cc69352a01804f36d23905e91d70e4f",
+                "timestamp": "2026-07-04T18:04:47Z"
+            }
+        ]
+    }
+]
