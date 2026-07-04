@@ -74,7 +74,29 @@ jobs:
           path.write_text("\n".join(lines) + "\n", encoding="utf-8")
           PY
 
+      - name: Resolve assfonts cache key
+        id: assfonts-cache-key
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git ls-tree HEAD assfonts | awk '{print $3}')"
+          if [ -z "$sha" ]; then
+            echo "Could not determine assfonts submodule commit" >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore native assfonts cache
+        id: assfonts-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            build/assfonts-arm64/install
+            build/assfonts-x86_64/install
+          key: ${{ runner.os }}-assfonts-${{ steps.assfonts-cache-key.outputs.sha }}-${{ hashFiles('assfonts-build/**') }}
+
       - name: Build native assfonts libraries
+        if: steps.assfonts-cache.outputs.cache-hit != 'true'
         run: ./assfonts-build/build.sh
 
       - name: Build plugin
