@@ -8,6 +8,14 @@
     "owner": "Albert Chang",
     "versions": [
       {
+        "changelog": "Remove \"Rewrite enabled\" switch",
+        "checksum": "6e560dcae227489bb87249e40b88f71a",
+        "sourceUrl": "https://github.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/releases/download/v1.0.0.1/ass-fonts-auto-embedding_1.0.0.1.zip",
+        "targetAbi": "10.11.0.0",
+        "timestamp": "2026-07-06T11:19:02Z",
+        "version": "1.0.0.1"
+      },
+      {
         "changelog": "Initial release",
         "checksum": "c0c878deca2e0d3a36359cc08152ab0e",
         "sourceUrl": "https://github.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/releases/download/v1.0.0.0/ass-fonts-auto-embedding_1.0.0.0.zip",
