@@ -74,7 +74,7 @@ public sealed class SubtitleEncoderWrapper : ISubtitleEncoder
         }
 
         var configuration = _pluginContext.GetConfiguration();
-        if (!configuration.Enabled || !configuration.RewriteEnabled || !_runtimeState.NativeFeaturesEnabled)
+        if (!configuration.Enabled || !_runtimeState.NativeFeaturesEnabled)
         {
             return await LogAndDelegateToCoreAsync("ASS rewrite wrapper inactive; delegating to core subtitle encoder. Reason: {Reason}", _runtimeState.DisableReason ?? "unknown").ConfigureAwait(false);
         }

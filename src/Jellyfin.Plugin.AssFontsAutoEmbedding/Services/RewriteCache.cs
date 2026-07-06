@@ -59,26 +59,31 @@ public sealed class RewriteCache
     public void ClearMemoryOnly()
         => _entries.Clear();
 
+    public int DeleteAllDirectories()
+    {
+        _entries.Clear();
+
+        var deletedCount = ProcessRewriteDirectories(
+            directoryAction: directoryInfo =>
+            {
+                TryDeleteDirectory(directoryInfo.FullName);
+                return true;
+            });
+
+        _logger.LogInformation("Cleaned up {DeletedCount} rewrite cache directories.", deletedCount);
+        return deletedCount;
+    }
+
     public int PruneDirectoriesOlderThan(TimeSpan maxAge)
     {
-        var rewriteRoot = _pluginPaths.GetRewriteRootDirectory();
-        if (!Directory.Exists(rewriteRoot))
-        {
-            _logger.LogDebug("Rewrite cache prune skipped because root directory {RewriteRoot} does not exist.", rewriteRoot);
-            return 0;
-        }
-
         var cutoffUtc = DateTime.UtcNow - maxAge;
-        var prunedCount = 0;
-        foreach (var directory in Directory.EnumerateDirectories(rewriteRoot))
-        {
-            try
+        var prunedCount = ProcessRewriteDirectories(
+            directoryAction: directoryInfo =>
             {
-                var directoryInfo = new DirectoryInfo(directory);
                 var timestampUtc = GetDirectoryTimestampUtc(directoryInfo);
                 if (timestampUtc >= cutoffUtc)
                 {
-                    continue;
+                    return false;
                 }
 
                 if (_entries.TryRemove(directoryInfo.Name, out var entry))
@@ -90,16 +95,45 @@ public sealed class RewriteCache
                     TryDeleteDirectory(directoryInfo.FullName);
                 }
 
-                prunedCount++;
-            }
-            catch
+                return true;
+            });
+
+        _logger.LogInformation("Cleaned up {PrunedCount} rewrite cache directories older than {MaxAge}.", prunedCount, maxAge);
+        return prunedCount;
+    }
+
+    private int ProcessRewriteDirectories(Func<DirectoryInfo, bool> directoryAction)
+    {
+        var rewriteRoot = _pluginPaths.GetRewriteRootDirectory();
+        if (!Directory.Exists(rewriteRoot))
+        {
+            _logger.LogDebug("Rewrite cache cleanup skipped because root directory {RewriteRoot} does not exist.", rewriteRoot);
+            return 0;
+        }
+
+        var affectedCount = 0;
+        foreach (var directory in Directory.EnumerateDirectories(rewriteRoot))
+        {
+            try
             {
-                _logger.LogWarning("Failed to prune rewrite cache directory {Directory}.", directory);
+                var directoryInfo = new DirectoryInfo(directory);
+                if (!directoryInfo.Exists)
+                {
+                    continue;
+                }
+
+                if (directoryAction(directoryInfo))
+                {
+                    affectedCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clean up rewrite cache directory {Directory}.", directory);
             }
         }
 
-        _logger.LogInformation("Pruned {PrunedCount} rewrite cache directories older than {MaxAge}.", prunedCount, maxAge);
-        return prunedCount;
+        return affectedCount;
     }
 
     private static DateTime GetDirectoryTimestampUtc(DirectoryInfo directoryInfo)

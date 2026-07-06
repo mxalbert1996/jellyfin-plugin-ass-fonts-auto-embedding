@@ -18,15 +18,7 @@
                             <input is="emby-checkbox" type="checkbox" id="Enabled" />
                             <span>Plugin enabled</span>
                         </label>
-                        <div class="fieldDescription">Turns the plugin on or off.</div>
-                    </div>
-
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label>
-                            <input is="emby-checkbox" type="checkbox" id="RewriteEnabled" />
-                            <span>Rewrite enabled</span>
-                        </label>
-                        <div class="fieldDescription">Embeds fonts into eligible ASS/SSA subtitles before Jellyfin sends them to clients.</div>
+                        <div class="fieldDescription">Turns ASS subtitle rewriting and related background work on or off.</div>
                     </div>
 
                     <div class="inputContainer">
@@ -91,7 +83,6 @@
                 async function loadConfig() {
                     const config = await ApiClient.getPluginConfiguration(pluginId);
                     page.querySelector('#Enabled').checked = config.Enabled;
-                    page.querySelector('#RewriteEnabled').checked = config.RewriteEnabled;
                     page.querySelector('#FontDirectories').value = (config.FontDirectories || []).join('\n');
                     page.querySelector('#NativeLogVerbosity').value = normalizeNativeLogVerbosity(config.NativeLogVerbosity);
                 }
@@ -101,7 +92,6 @@
 
                     const config = await ApiClient.getPluginConfiguration(pluginId);
                     config.Enabled = page.querySelector('#Enabled').checked;
-                    config.RewriteEnabled = page.querySelector('#RewriteEnabled').checked;
                     config.FontDirectories = page.querySelector('#FontDirectories').value
                         .split(/\r?\n/)
                         .map(line => line.trim())

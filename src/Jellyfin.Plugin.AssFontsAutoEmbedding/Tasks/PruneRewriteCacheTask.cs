@@ -12,11 +12,13 @@ public sealed class PruneRewriteCacheTask : IScheduledTask
 {
     private static readonly TimeSpan DefaultInterval = TimeSpan.FromHours(24);
     private readonly ILogger<PruneRewriteCacheTask> _logger;
+    private readonly PluginContext _pluginContext;
     private readonly RewriteCache _rewriteCache;
 
-    public PruneRewriteCacheTask(RewriteCache rewriteCache, ILogger<PruneRewriteCacheTask> logger)
+    public PruneRewriteCacheTask(RewriteCache rewriteCache, PluginContext pluginContext, ILogger<PruneRewriteCacheTask> logger)
     {
         _rewriteCache = rewriteCache;
+        _pluginContext = pluginContext;
         _logger = logger;
     }
 
@@ -42,8 +44,13 @@ public sealed class PruneRewriteCacheTask : IScheduledTask
     {
         cancellationToken.ThrowIfCancellationRequested();
         progress.Report(0);
-        var prunedCount = _rewriteCache.PruneDirectoriesOlderThan(DefaultInterval);
-        _logger.LogInformation("Prune rewrite cache task completed. Pruned {PrunedCount} directories.", prunedCount);
+
+        var cleanedCount = !_pluginContext.GetConfiguration().Enabled
+            ? _rewriteCache.DeleteAllDirectories()
+            : _rewriteCache.PruneDirectoriesOlderThan(DefaultInterval);
+
+        _logger.LogInformation("Rewrite cache cleanup task completed. Cleaned up {CleanedCount} directories.", cleanedCount);
+
         progress.Report(100);
         return Task.CompletedTask;
     }

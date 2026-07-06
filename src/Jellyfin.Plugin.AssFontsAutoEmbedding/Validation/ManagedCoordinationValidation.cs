@@ -41,7 +41,6 @@ public static class ManagedCoordinationValidation
             plugin.UpdateConfiguration(new PluginConfiguration
             {
                 Enabled = true,
-                RewriteEnabled = true,
                 FontDirectories = new List<string> { tempRoot, pluginData },
                 NativeLogVerbosity = NativeLogVerbosity.Warn
             });
@@ -95,7 +94,6 @@ public static class ManagedCoordinationValidation
             var secondConfiguration = new PluginConfiguration
             {
                 Enabled = true,
-                RewriteEnabled = true,
                 FontDirectories = new List<string> { tempRoot, pluginData, Path.Combine(tempRoot, "fonts-1") },
                 NativeLogVerbosity = NativeLogVerbosity.Warn
             };
@@ -113,7 +111,6 @@ public static class ManagedCoordinationValidation
             var fourthConfiguration = new PluginConfiguration
             {
                 Enabled = true,
-                RewriteEnabled = true,
                 FontDirectories = new List<string> { tempRoot, pluginData, Path.Combine(tempRoot, "fonts-1"), Path.Combine(tempRoot, "fonts-2"), Path.Combine(tempRoot, "fonts-3") },
                 NativeLogVerbosity = NativeLogVerbosity.Warn
             };
@@ -137,7 +134,6 @@ public static class ManagedCoordinationValidation
             var raceConfiguration = new PluginConfiguration
             {
                 Enabled = true,
-                RewriteEnabled = true,
                 FontDirectories = new List<string> { tempRoot, pluginData, Path.Combine(tempRoot, "fonts-1"), Path.Combine(tempRoot, "fonts-2"), Path.Combine(tempRoot, "fonts-4") },
                 NativeLogVerbosity = NativeLogVerbosity.Warn
             };
@@ -150,7 +146,6 @@ public static class ManagedCoordinationValidation
             var thirdConfiguration = new PluginConfiguration
             {
                 Enabled = true,
-                RewriteEnabled = true,
                 FontDirectories = new List<string> { tempRoot, pluginData, Path.Combine(tempRoot, "fonts-1"), Path.Combine(tempRoot, "fonts-2") },
                 NativeLogVerbosity = NativeLogVerbosity.Warn
             };
@@ -160,7 +155,6 @@ public static class ManagedCoordinationValidation
             var attachmentOnlyConfiguration = new PluginConfiguration
             {
                 Enabled = true,
-                RewriteEnabled = true,
                 FontDirectories = new List<string>(),
                 NativeLogVerbosity = NativeLogVerbosity.Warn
             };

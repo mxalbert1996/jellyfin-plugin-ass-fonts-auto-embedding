@@ -9,8 +9,6 @@ public sealed class PluginConfiguration : BasePluginConfiguration
 {
     public bool Enabled { get; set; } = true;
 
-    public bool RewriteEnabled { get; set; } = true;
-
     public List<string> FontDirectories { get; set; } = new();
 
     public NativeLogVerbosity NativeLogVerbosity { get; set; } = NativeLogVerbosity.Warn;
