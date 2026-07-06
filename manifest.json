@@ -8,6 +8,14 @@
         "category": "Subtitles",
         "versions": [
             {
+                "version": "1.2607.3.0",
+                "changelog": "",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/releases/download/snapshot/ass-fonts-auto-embedding_1.2607.3.0.zip",
+                "checksum": "70476bd579404991d61c7eb26075b21c",
+                "timestamp": "2026-07-06T11:17:45Z"
+            },
+            {
                 "version": "1.2607.2.0",
                 "changelog": "",
                 "targetAbi": "10.11.0.0",
