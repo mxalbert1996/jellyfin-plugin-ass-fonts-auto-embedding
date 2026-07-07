@@ -61,6 +61,13 @@ Notes:
 - If the bundled binaries do not work for your environment, build them yourself.
 - If you are using Windows or macOS, you should also build your own native binaries for those platforms.
 
+## License
+
+This project is licensed under GPL-3.0-only. See [LICENSE](LICENSE).
+
+Distributed plugin artifacts bundle `libassfonts` built from the `assfonts`
+submodule. See [NOTICE](NOTICE) and `assfonts/NOTICE` in source checkouts.
+
 ## Validation
 
 Two validation entrypoints are included.

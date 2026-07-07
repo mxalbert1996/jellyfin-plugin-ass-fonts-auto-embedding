@@ -1,0 +1,20 @@
+Jellyfin ASS Fonts Auto Embedding bundles the `libassfonts` native library
+built from the `assfonts` source tree included in this repository as a Git
+submodule.
+
+Bundled component: assfonts
+Copyright (C) 2023 wyzdwdz <wyzdwdz@gmail.com>
+License: GNU General Public License, version 3 only (GPL-3.0-only)
+
+Corresponding source for the bundled assfonts library is available in the
+source tree at:
+- assfonts/
+
+Upstream project and notice references:
+- Source: https://github.com/wyzdwdz/assfonts/tree/1bf4bb5f92ea73794e121c88631f268b633c9ef8
+- NOTICE: https://github.com/wyzdwdz/assfonts/blob/1bf4bb5f92ea73794e121c88631f268b633c9ef8/NOTICE
+
+Packaged plugin artifacts also include a copy of the upstream assfonts notice
+file as `assfonts-NOTICE.txt`.
+
+This repository is licensed under GPL-3.0-only. See LICENSE.

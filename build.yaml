@@ -10,6 +10,9 @@ description: |
 category: "Subtitles"
 changelog: ""
 artifacts:
+  - "LICENSE"
+  - "NOTICE"
+  - "assfonts-NOTICE.txt"
   - "BitFaster.Caching.dll"
   - "Diacritics.dll"
   - "ICU4N.Transliterator.dll"
