@@ -160,7 +160,7 @@ public sealed class RewriteService
                     effectiveFontDirectories.Add(stagedAttachmentDirectory);
                 }
 
-                var outputPath = await _nativeOperationCoordinator.RunExclusiveAsync(
+                var outputPath = await _nativeOperationCoordinator.RunSharedAsync(
                     ct => _assfontsEngine.RewriteSubtitleAsync(
                         subtitlePath,
                         rewriteDirectory,

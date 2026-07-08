@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.AssFontsAutoEmbedding.Configuration;
@@ -31,6 +32,10 @@ public static class ManagedCoordinationValidation
 
         var subtitlePath = Path.Combine(tempRoot, "example.ass");
         File.WriteAllText(subtitlePath, "[Script Info]\nTitle: sample\n[V4+ Styles]\n[Events]\n");
+        var alternateSubtitlePath = Path.Combine(tempRoot, "example-alt.ass");
+        File.WriteAllText(alternateSubtitlePath, "[Script Info]\nTitle: sample-alt\n[V4+ Styles]\n[Events]\n");
+        var thirdSubtitlePath = Path.Combine(tempRoot, "example-third.ass");
+        File.WriteAllText(thirdSubtitlePath, "[Script Info]\nTitle: sample-third\n[V4+ Styles]\n[Events]\n");
 
         try
         {
@@ -68,6 +73,7 @@ public static class ManagedCoordinationValidation
             var rewriteCache = provider.GetRequiredService<RewriteCache>();
             var fontDbStateManager = provider.GetRequiredService<FontDbStateManager>();
             var fontDbBuildService = provider.GetRequiredService<FontDbBuildService>();
+            var nativeOperationCoordinator = provider.GetRequiredService<NativeOperationCoordinator>();
             var runtimeState = provider.GetRequiredService<PluginRuntimeState>();
             runtimeState.EnableNativeFeatures();
 
@@ -108,6 +114,12 @@ public static class ManagedCoordinationValidation
             var concurrentRewrite3 = rewriteService.TryRewriteAsync(requestAfterSecondConfiguration, CancellationToken.None);
             Task.WaitAll(concurrentRewrite1, concurrentRewrite2, concurrentRewrite3);
 
+            var alternateRequestAfterSecondConfiguration = CreateRequest(plugin, alternateSubtitlePath, tempRoot, pluginData, ResolvedAttachmentFontSet.Empty);
+            var thirdRequestAfterSecondConfiguration = CreateRequest(plugin, thirdSubtitlePath, tempRoot, pluginData, ResolvedAttachmentFontSet.Empty);
+            var distinctConcurrentRewrite1 = rewriteService.TryRewriteAsync(alternateRequestAfterSecondConfiguration, CancellationToken.None);
+            var distinctConcurrentRewrite2 = rewriteService.TryRewriteAsync(thirdRequestAfterSecondConfiguration, CancellationToken.None);
+            Task.WaitAll(distinctConcurrentRewrite1, distinctConcurrentRewrite2);
+
             var fourthConfiguration = new PluginConfiguration
             {
                 Enabled = true,
@@ -120,6 +132,31 @@ public static class ManagedCoordinationValidation
             plugin.UpdateConfiguration(fourthConfiguration);
 
             var requestAfterFourthConfiguration = CreateRequest(plugin, subtitlePath, tempRoot, pluginData, ResolvedAttachmentFontSet.Empty);
+
+            var sharedRewriteStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseSharedRewrite = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sharedRewrite = nativeOperationCoordinator.RunSharedAsync(async _ =>
+            {
+                sharedRewriteStarted.SetResult(true);
+                await releaseSharedRewrite.Task.ConfigureAwait(false);
+                return true;
+            }, CancellationToken.None);
+            sharedRewriteStarted.Task.GetAwaiter().GetResult();
+
+            var exclusiveRebuildStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseExclusiveRebuild = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var exclusiveRebuild = nativeOperationCoordinator.RunExclusiveAsync(async _ =>
+            {
+                exclusiveRebuildStarted.SetResult(true);
+                await releaseExclusiveRebuild.Task.ConfigureAwait(false);
+                return true;
+            }, CancellationToken.None);
+            var sharedRewriteBlockedExclusive = !exclusiveRebuildStarted.Task.Wait(TimeSpan.FromMilliseconds(100));
+            releaseSharedRewrite.SetResult(true);
+            sharedRewrite.GetAwaiter().GetResult();
+            var exclusiveRebuildStartedAfterSharedRewrite = exclusiveRebuildStarted.Task.Wait(TimeSpan.FromSeconds(1));
+            releaseExclusiveRebuild.SetResult(true);
+            exclusiveRebuild.GetAwaiter().GetResult();
 
             var overlapRewrite = rewriteService.TryRewriteAsync(requestAfterFourthConfiguration, CancellationToken.None);
             var overlapRebuild = fontDbBuildService.RebuildAsync(CancellationToken.None);
@@ -165,18 +202,95 @@ public static class ManagedCoordinationValidation
             var attachmentOnlyEligibility = rewriteService.CheckEligibility(attachmentOnlyRequest);
             var attachmentOnlyRewrite = rewriteService.TryRewriteAsync(attachmentOnlyRequest, CancellationToken.None).GetAwaiter().GetResult();
 
+            var roomEmpty = GetPrivateField<SemaphoreSlim>(nativeOperationCoordinator, "_roomEmpty");
+            roomEmpty.Wait();
+
+            using var canceledSharedReaderTokenSource = new CancellationTokenSource();
+            var canceledSharedReader = nativeOperationCoordinator.RunSharedAsync(_ => Task.FromResult(true), canceledSharedReaderTokenSource.Token);
+            var canceledSharedReaderEnteredRollbackPath = SpinWait.SpinUntil(
+                () => GetPrivateField<int>(nativeOperationCoordinator, "_readerCount") == 1,
+                TimeSpan.FromSeconds(1));
+
+            canceledSharedReaderTokenSource.Cancel();
+            var canceledSharedReaderObserved = false;
+            try
+            {
+                canceledSharedReader.GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                canceledSharedReaderObserved = true;
+            }
+
+            var canceledSharedReaderRolledBackReaderCount = SpinWait.SpinUntil(
+                () => GetPrivateField<int>(nativeOperationCoordinator, "_readerCount") == 0,
+                TimeSpan.FromSeconds(1));
+            roomEmpty.Release();
+
+            var secondWriterStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var releaseSecondWriter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondWriter = nativeOperationCoordinator.RunExclusiveAsync(async _ =>
+            {
+                secondWriterStarted.SetResult(true);
+                await releaseSecondWriter.Task.ConfigureAwait(false);
+                return true;
+            }, CancellationToken.None);
+            secondWriterStarted.Task.GetAwaiter().GetResult();
+
+            var secondReaderStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondReader = nativeOperationCoordinator.RunSharedAsync(_ =>
+            {
+                secondReaderStarted.SetResult(true);
+                return Task.FromResult(true);
+            }, CancellationToken.None);
+            var canceledSharedReaderRollbackWorked = !secondReaderStarted.Task.Wait(TimeSpan.FromMilliseconds(100));
+            releaseSecondWriter.SetResult(true);
+            secondWriter.GetAwaiter().GetResult();
+            secondReader.GetAwaiter().GetResult();
+
             plugin.UpdateConfiguration(thirdConfiguration);
 
+            using var canceledRewriteWaiterTokenSource = new CancellationTokenSource();
+            var rewriteWaiterCoordinator = provider.GetRequiredService<RewriteWorkCoordinator>();
+            var cancelledWorkKey = "cancelled-work-key";
+            var releaseRewriteGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var holdingRewriteGate = rewriteWaiterCoordinator.RunSingleFlightAsync(cancelledWorkKey, async () =>
+            {
+                await releaseRewriteGate.Task.ConfigureAwait(false);
+                return true;
+            }, CancellationToken.None);
+
+            var rewriteGateHeld = SpinWait.SpinUntil(
+                () => PrivateConcurrentDictionaryContainsKey(rewriteWaiterCoordinator, "_locks", cancelledWorkKey),
+                TimeSpan.FromSeconds(1));
+            var canceledRewriteWaiter = rewriteWaiterCoordinator.RunSingleFlightAsync(cancelledWorkKey, () => Task.FromResult(true), canceledRewriteWaiterTokenSource.Token);
+            canceledRewriteWaiterTokenSource.Cancel();
+            var canceledRewriteWaiterObserved = false;
+            try
+            {
+                canceledRewriteWaiter.GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                canceledRewriteWaiterObserved = true;
+            }
+
+            releaseRewriteGate.SetResult(true);
+            holdingRewriteGate.GetAwaiter().GetResult();
+
+            var canceledRewriteWaiterReleasedReference = !PrivateConcurrentDictionaryContainsKey(rewriteWaiterCoordinator, "_locks", cancelledWorkKey);
+
             var fakeEngine = (FakeAssfontsEngine)provider.GetRequiredService<IAssfontsEngine>();
-            var overlapBlockedBySharedCoordination = !fakeEngine.OverlapDetected
+            var overlapBlockedBySharedCoordination = !fakeEngine.BuildRewriteOverlapDetected
                 && overlapRebuild.Result.Success;
             var dbBuild1 = fontDbBuildService.RebuildAsync(CancellationToken.None);
             var dbBuild2 = fontDbBuildService.RebuildAsync(CancellationToken.None);
             Task.WaitAll(dbBuild1, dbBuild2);
             var forcedBuild = fontDbBuildService.ForceRebuildAsync(CancellationToken.None).GetAwaiter().GetResult();
-            const int expectedRewriteInvocations = 6;
+            const int expectedRewriteInvocations = 8;
             const int expectedDbRebuildInvocations = 6;
-            Console.WriteLine($"Native operation overlap observed={fakeEngine.OverlapDetected}");
+            Console.WriteLine($"Concurrent rewrite overlap observed={fakeEngine.ConcurrentRewriteOverlapObserved}");
+            Console.WriteLine($"Build/rewrite overlap detected={fakeEngine.BuildRewriteOverlapDetected}");
 
             Console.WriteLine($"Eligibility: {eligibility.IsEligible} reason={eligibility.Reason}");
             Console.WriteLine($"First rewrite success={first.Success} path={first.OutputFilePath}");
@@ -187,6 +301,8 @@ public static class ManagedCoordinationValidation
             Console.WriteLine($"Concurrent rewrite success={concurrentRewrite1.Result.Success && concurrentRewrite2.Result.Success && concurrentRewrite3.Result.Success}");
             Console.WriteLine($"Expected rewrite invocations={expectedRewriteInvocations}");
             Console.WriteLine($"Rewrite single-flight correct={fakeEngine.RewriteInvocationCount == expectedRewriteInvocations}");
+            Console.WriteLine($"Shared rewrite blocked exclusive rebuild={sharedRewriteBlockedExclusive}");
+            Console.WriteLine($"Exclusive rebuild started after shared rewrite={exclusiveRebuildStartedAfterSharedRewrite}");
             Console.WriteLine($"Rewrite/rebuild overlap scenario blocked cleanly={overlapBlockedBySharedCoordination}");
             Console.WriteLine($"Fake DB rebuild invocations={fakeEngine.BuildDbInvocationCount}");
             Console.WriteLine($"Expected DB rebuild invocations={expectedDbRebuildInvocations}");
@@ -198,7 +314,14 @@ public static class ManagedCoordinationValidation
             Console.WriteLine($"Attachment-only rewrite success without configured font dirs={attachmentOnlyRewrite.Success}");
             Console.WriteLine($"Rewrite after stale invalidation success={rewriteAfterInvalidate.Success} path={rewriteAfterInvalidate.OutputFilePath}");
             Console.WriteLine($"Same-config concurrent rewrites shared output={string.Equals(sameConfigConcurrent1.Result.OutputFilePath, sameConfigConcurrent2.Result.OutputFilePath, StringComparison.OrdinalIgnoreCase)}");
-            Console.WriteLine($"Native operation coordination correct={!fakeEngine.OverlapDetected}");
+            Console.WriteLine($"Canceled shared reader entered rollback path={canceledSharedReaderEnteredRollbackPath}");
+            Console.WriteLine($"Distinct concurrent rewrites success={distinctConcurrentRewrite1.Result.Success && distinctConcurrentRewrite2.Result.Success}");
+            Console.WriteLine($"Canceled shared reader observed={canceledSharedReaderObserved}");
+            Console.WriteLine($"Canceled shared reader rollback worked={canceledSharedReaderRolledBackReaderCount && canceledSharedReaderRollbackWorked}");
+            Console.WriteLine($"Rewrite gate held before cancellation={rewriteGateHeld}");
+            Console.WriteLine($"Canceled rewrite waiter observed={canceledRewriteWaiterObserved}");
+            Console.WriteLine($"Canceled rewrite waiter released reference={canceledRewriteWaiterReleasedReference}");
+            Console.WriteLine($"Native operation coordination correct={!fakeEngine.BuildRewriteOverlapDetected && fakeEngine.ConcurrentRewriteOverlapObserved}");
 
             AssertInvariant(eligibility.IsEligible, "Primary request should be eligible.");
             AssertInvariant(first.Success, "Initial rewrite should succeed.");
@@ -208,6 +331,8 @@ public static class ManagedCoordinationValidation
             AssertInvariant(string.Equals(first.OutputFilePath, restartLikeReuse.OutputFilePath, StringComparison.OrdinalIgnoreCase), "Restart-like disk cache reuse should return the same output path.");
             AssertInvariant(concurrentRewrite1.Result.Success && concurrentRewrite2.Result.Success && concurrentRewrite3.Result.Success, "Concurrent rewrites should all succeed.");
             AssertInvariant(fakeEngine.RewriteInvocationCount == expectedRewriteInvocations, $"Rewrite single-flight failed. Expected {expectedRewriteInvocations}, got {fakeEngine.RewriteInvocationCount}.");
+            AssertInvariant(sharedRewriteBlockedExclusive, "Shared rewrite should block exclusive rebuild from starting immediately.");
+            AssertInvariant(exclusiveRebuildStartedAfterSharedRewrite, "Exclusive rebuild should start after the shared rewrite finishes.");
             AssertInvariant(overlapBlockedBySharedCoordination, "Rewrite/rebuild overlap coordination failed.");
             AssertInvariant(fakeEngine.BuildDbInvocationCount == expectedDbRebuildInvocations, $"DB rebuild sharing failed. Expected {expectedDbRebuildInvocations}, got {fakeEngine.BuildDbInvocationCount}.");
             AssertInvariant(forcedBuild.Success, "Forced DB rebuild should succeed.");
@@ -218,7 +343,16 @@ public static class ManagedCoordinationValidation
             AssertInvariant(string.Equals(sameConfigConcurrent1.Result.OutputFilePath, sameConfigConcurrent2.Result.OutputFilePath, StringComparison.OrdinalIgnoreCase), "Same-config concurrent rewrites should converge on one final cache/output target.");
             AssertInvariant(attachmentOnlyEligibility.IsEligible, "Attachment-only rewrite should be eligible without configured font directories.");
             AssertInvariant(attachmentOnlyRewrite.Success, "Attachment-only rewrite should succeed without configured font directories.");
-            AssertInvariant(!fakeEngine.OverlapDetected, "Native operation coordination should prevent overlap.");
+            AssertInvariant(distinctConcurrentRewrite1.Result.Success && distinctConcurrentRewrite2.Result.Success, "Distinct concurrent rewrites should both succeed.");
+            AssertInvariant(canceledSharedReaderEnteredRollbackPath, "Canceled shared reader should reach the first-reader rollback path.");
+            AssertInvariant(canceledSharedReaderObserved, "Canceled shared reader should observe cancellation.");
+            AssertInvariant(canceledSharedReaderRolledBackReaderCount, "Canceled shared reader should restore reader count after rollback.");
+            AssertInvariant(canceledSharedReaderRollbackWorked, "Canceled shared reader should roll back cleanly and stay blocked behind the next writer.");
+            AssertInvariant(rewriteGateHeld, "Rewrite single-flight gate should be held before cancellation test runs.");
+            AssertInvariant(canceledRewriteWaiterObserved, "Canceled rewrite waiter should observe cancellation.");
+            AssertInvariant(canceledRewriteWaiterReleasedReference, "Canceled rewrite waiter should release its single-flight reference.");
+            AssertInvariant(fakeEngine.ConcurrentRewriteOverlapObserved, "Concurrent distinct rewrites should be allowed to overlap.");
+            AssertInvariant(!fakeEngine.BuildRewriteOverlapDetected, "Native operation coordination should still block rebuild/rewrite overlap.");
         }
         finally
         {
@@ -237,45 +371,67 @@ public static class ManagedCoordinationValidation
         public bool IsAvailable => true;
         public string? LastFailureReason => null;
         public int BuildDbInvocationCount { get; private set; }
-        public bool OverlapDetected { get; private set; }
+        public bool BuildRewriteOverlapDetected { get; private set; }
+        public bool ConcurrentRewriteOverlapObserved { get; private set; }
         public int RewriteInvocationCount { get; private set; }
-        private int _activeNativeOperations;
+        private int _activeBuildOperations;
+        private int _activeRewriteOperations;
 
         public Task<AssfontsOperationResult> SelfCheckAsync(CancellationToken cancellationToken)
             => Task.FromResult(AssfontsOperationResult.Ok("ok"));
 
-        public Task<AssfontsOperationResult> BuildFontDatabaseAsync(IReadOnlyList<string> fontDirectories, string dbDirectory, CancellationToken cancellationToken)
+        public async Task<AssfontsOperationResult> BuildFontDatabaseAsync(IReadOnlyList<string> fontDirectories, string dbDirectory, CancellationToken cancellationToken)
         {
-            EnterNativeOperation();
+            EnterBuildOperation();
             BuildDbInvocationCount++;
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
             Directory.CreateDirectory(dbDirectory);
             File.WriteAllText(Path.Combine(dbDirectory, "fonts.json"), string.Join("|", fontDirectories));
-            ExitNativeOperation();
-            return Task.FromResult(AssfontsOperationResult.Ok("db ok"));
+            ExitBuildOperation();
+            return AssfontsOperationResult.Ok("db ok");
         }
 
-        public Task<RewriteResult> RewriteSubtitleAsync(string subtitlePath, string outputDirectory, IReadOnlyList<string> fontDirectories, string dbDirectory, CancellationToken cancellationToken)
+        public async Task<RewriteResult> RewriteSubtitleAsync(string subtitlePath, string outputDirectory, IReadOnlyList<string> fontDirectories, string dbDirectory, CancellationToken cancellationToken)
         {
-            EnterNativeOperation();
+            EnterRewriteOperation();
             RewriteInvocationCount++;
+            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
             Directory.CreateDirectory(outputDirectory);
             var outputPath = Path.Combine(outputDirectory, $"{Path.GetFileNameWithoutExtension(subtitlePath)}.assfonts{Path.GetExtension(subtitlePath)}");
             File.WriteAllText(outputPath, "rewritten");
-            ExitNativeOperation();
-            return Task.FromResult(RewriteResult.Rewritten(outputPath, "rewritten"));
+            ExitRewriteOperation();
+            return RewriteResult.Rewritten(outputPath, "rewritten");
         }
 
-        private void EnterNativeOperation()
+        private void EnterBuildOperation()
         {
-            if (Interlocked.Increment(ref _activeNativeOperations) > 1)
+            if (Interlocked.Increment(ref _activeBuildOperations) > 1 || Volatile.Read(ref _activeRewriteOperations) > 0)
             {
-                OverlapDetected = true;
+                BuildRewriteOverlapDetected = true;
             }
         }
 
-        private void ExitNativeOperation()
+        private void ExitBuildOperation()
         {
-            Interlocked.Decrement(ref _activeNativeOperations);
+            Interlocked.Decrement(ref _activeBuildOperations);
+        }
+
+        private void EnterRewriteOperation()
+        {
+            if (Interlocked.Increment(ref _activeRewriteOperations) > 1)
+            {
+                ConcurrentRewriteOverlapObserved = true;
+            }
+
+            if (Volatile.Read(ref _activeBuildOperations) > 0)
+            {
+                BuildRewriteOverlapDetected = true;
+            }
+        }
+
+        private void ExitRewriteOperation()
+        {
+            Interlocked.Decrement(ref _activeRewriteOperations);
         }
     }
 
@@ -341,6 +497,24 @@ public static class ManagedCoordinationValidation
         {
             throw new InvalidOperationException(message);
         }
+    }
+
+    private static T GetPrivateField<T>(object instance, string fieldName, Func<object, T>? valueSelector = null)
+    {
+        var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Field '{fieldName}' not found on {instance.GetType().Name}.");
+
+        var value = field.GetValue(instance)!;
+        return valueSelector is null ? (T)value : valueSelector(value);
+    }
+
+    private static bool PrivateConcurrentDictionaryContainsKey(object instance, string fieldName, string key)
+    {
+        var dictionary = GetPrivateField<object>(instance, fieldName);
+        var containsKeyMethod = dictionary.GetType().GetMethod("ContainsKey", new[] { typeof(string) })
+            ?? throw new InvalidOperationException($"ContainsKey(string) not found on field '{fieldName}'.");
+
+        return (bool)containsKeyMethod.Invoke(dictionary, new object[] { key })!;
     }
 
     private static RewriteRequest CreateRequest(Plugin plugin, string subtitlePath, string tempRoot, string pluginData, ResolvedAttachmentFontSet attachmentFonts)

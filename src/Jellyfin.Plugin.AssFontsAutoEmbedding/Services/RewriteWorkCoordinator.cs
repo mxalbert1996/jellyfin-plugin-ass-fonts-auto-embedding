@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,18 +7,24 @@ namespace Jellyfin.Plugin.AssFontsAutoEmbedding.Services;
 
 public sealed class RewriteWorkCoordinator
 {
-    private readonly ConcurrentDictionary<string, LockEntry> _locks = new();
+    private readonly Dictionary<string, LockEntry> _locks = new(StringComparer.Ordinal);
+    private readonly object _syncRoot = new();
 
     public Task<T> RunSingleFlightAsync<T>(string key, Func<Task<T>> action, CancellationToken cancellationToken)
     {
-        var entry = _locks.AddOrUpdate(
-            key,
-            static _ => new LockEntry(),
-            static (_, existing) =>
+        LockEntry entry;
+        lock (_syncRoot)
+        {
+            if (!_locks.TryGetValue(key, out entry!))
             {
-                existing.AddReference();
-                return existing;
-            });
+                entry = new LockEntry();
+                _locks.Add(key, entry);
+            }
+            else
+            {
+                entry.ReferenceCount++;
+            }
+        }
 
         return RunLockedAsync(key, entry, action, cancellationToken);
     }
@@ -28,31 +34,37 @@ public sealed class RewriteWorkCoordinator
 
     private async Task<T> RunLockedAsync<T>(string key, LockEntry entry, Func<Task<T>> action, CancellationToken cancellationToken)
     {
-        await entry.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var enteredGate = false;
         try
         {
+            await entry.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            enteredGate = true;
             return await action().ConfigureAwait(false);
         }
         finally
         {
-            entry.Gate.Release();
-            if (entry.ReleaseReference() == 0)
+            if (enteredGate)
             {
-                _locks.TryRemove(new KeyValuePair<string, LockEntry>(key, entry));
+                entry.Gate.Release();
+            }
+
+            lock (_syncRoot)
+            {
+                entry.ReferenceCount--;
+                if (entry.ReferenceCount == 0
+                    && _locks.TryGetValue(key, out var current)
+                    && ReferenceEquals(current, entry))
+                {
+                    _locks.Remove(key);
+                }
             }
         }
     }
 
     private sealed class LockEntry
     {
-        private int _referenceCount = 1;
-
         public SemaphoreSlim Gate { get; } = new(1, 1);
 
-        public void AddReference()
-            => Interlocked.Increment(ref _referenceCount);
-
-        public int ReleaseReference()
-            => Interlocked.Decrement(ref _referenceCount);
+        public int ReferenceCount { get; set; } = 1;
     }
 }
