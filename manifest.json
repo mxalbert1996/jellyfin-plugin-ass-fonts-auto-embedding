@@ -8,6 +8,14 @@
     "owner": "Albert Chang",
     "versions": [
       {
+        "changelog": "Support Jellyfin 12.0",
+        "checksum": "be60d860a314b31db0576eba4bd74620",
+        "sourceUrl": "https://github.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/releases/download/v1.0.1.0/ass-fonts-auto-embedding_1.0.1.0.zip",
+        "targetAbi": "12.0.0.0",
+        "timestamp": "2026-09-13T12:11:24Z",
+        "version": "1.0.1.0"
+      },
+      {
         "changelog": "Allow concurrent subtitle rewrites",
         "checksum": "a013f6d716472c1129e5a987a923a2b7",
         "sourceUrl": "https://github.com/mxalbert1996/jellyfin-plugin-ass-fonts-auto-embedding/releases/download/v1.0.0.3/ass-fonts-auto-embedding_1.0.0.3.zip",
