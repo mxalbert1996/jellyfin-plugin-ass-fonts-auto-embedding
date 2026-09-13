@@ -4,6 +4,10 @@ Jellyfin ASS Fonts Auto Embedding is a Jellyfin plugin that rewrites eligible AS
 
 Today, the native runtime path used by the plugin is aimed at Jellyfin on Linux. The plugin can resolve native libraries from Linux, macOS, and Windows-style plugin-local paths, but this repository currently ships Linux native binaries only.
 
+## Requirements
+
+- Jellyfin 12.0 or later (the plugin targets .NET 10 / `net10.0`).
+
 ## Installation
 
 In Jellyfin:
@@ -28,7 +32,7 @@ If files inside an already-configured font directory change, the plugin does not
 
 ## Development notes
 
-- The plugin project is built with .NET:
+- The plugin project is built with the .NET 10 SDK:
 
   ```bash
   dotnet build Jellyfin.Plugin.AssFontsAutoEmbedding.sln
